@@ -9,6 +9,7 @@ import {
   HttpStatus,
   HttpCode,
   BadRequestException,
+  Inject,
 } from '@nestjs/common';
 import { BasicAuthGuard } from '../auth';
 import { Order, OrderService } from '../order';
@@ -21,8 +22,8 @@ import { CreateOrderDto, PutCartPayload } from 'src/order/type';
 @Controller('api/profile/cart')
 export class CartController {
   constructor(
-    private cartService: CartService,
-    private orderService: OrderService,
+    @Inject(CartService) private cartService: CartService,
+    @Inject(OrderService) private orderService: OrderService,
   ) {}
 
   // @UseGuards(JwtAuthGuard)
