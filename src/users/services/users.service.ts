@@ -16,7 +16,7 @@ export class UsersService {
         return this.users[id];
       }
     }
-    return;
+    return null as any;
   }
 
   createOne({ name, password }: User): User {
