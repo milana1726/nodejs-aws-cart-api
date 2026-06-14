@@ -83,7 +83,7 @@ export class CartController {
           userId,
           cartId,
           JSON.stringify({ type: 'card' }),
-          JSON.stringify({ address: body.address }),
+          JSON.stringify({ address: body.delivery.address }),
           '',
           'CREATED',
           total,
@@ -114,7 +114,7 @@ export class CartController {
             {
               status: 'ORDERED',
               timestamp: order.created_at,
-              comment: '',
+              comment: body.delivery.address.comment,
             },
           ],
         },

@@ -21,11 +21,13 @@ export type Address = {
 };
 export type CreateOrderDto = {
   items: Array<{ productId: string; count: 1 }>;
-  address: {
-    comment: string;
-    address: string;
-    lastName: string;
-    firstName: string;
+  delivery: {
+    address: {
+      comment: string;
+      address: string;
+      lastName: string;
+      firstName: string;
+    };
   };
 };
 
