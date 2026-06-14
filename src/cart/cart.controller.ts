@@ -106,7 +106,6 @@ export class CartController {
       return [
         {
           ...order,
-          status: 'ORDERED',
           items: items.map((item) => ({
             productId: item.product.id,
             count: item.count,
