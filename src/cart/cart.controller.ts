@@ -4,52 +4,61 @@ import {
   Delete,
   Put,
   Body,
+  Req,
+  UseGuards,
   HttpStatus,
   HttpCode,
   BadRequestException,
   Inject,
 } from '@nestjs/common';
 
+import { BasicAuthGuard } from '../auth';
+import { AppRequest, getUserIdFromRequest } from '../shared';
+
 import { calculateCartTotal } from './models-rules';
 import { CartService } from './services';
 import { CartItem } from './models';
+
 import { CreateOrderDto, PutCartPayload } from '../order/type';
 import { pool } from '../shared/db/db';
-import { Order } from 'src/order/models';
 
 @Controller('api/profile/cart')
 export class CartController {
   constructor(@Inject(CartService) private cartService: CartService) {}
 
+  @UseGuards(BasicAuthGuard)
   @Get()
-  async findUserCart(): Promise<CartItem[]> {
-    const userId = '11111111-1111-1111-1111-111111111111';
-
+  async findUserCart(@Req() req: AppRequest): Promise<CartItem[]> {
+    const userId = getUserIdFromRequest(req);
     const cart = await this.cartService.findOrCreateByUserId(userId);
 
     return cart.items;
   }
 
+  @UseGuards(BasicAuthGuard)
   @Put()
-  async updateUserCart(@Body() body: PutCartPayload): Promise<CartItem[]> {
-    const userId = '11111111-1111-1111-1111-111111111111';
-
+  async updateUserCart(
+    @Req() req: AppRequest,
+    @Body() body: PutCartPayload,
+  ): Promise<CartItem[]> {
+    const userId = getUserIdFromRequest(req);
     const cart = await this.cartService.updateByUserId(userId, body);
 
     return cart.items;
   }
 
+  @UseGuards(BasicAuthGuard)
   @Delete()
   @HttpCode(HttpStatus.OK)
-  async clearUserCart(): Promise<void> {
-    const userId = '11111111-1111-1111-1111-111111111111';
-
+  async clearUserCart(@Req() req: AppRequest): Promise<void> {
+    const userId = getUserIdFromRequest(req);
     await this.cartService.removeByUserId(userId);
   }
 
+  @UseGuards(BasicAuthGuard)
   @Put('order')
-  async checkout(@Body() body: CreateOrderDto) {
-    const userId = '11111111-1111-1111-1111-111111111111';
+  async checkout(@Req() req: AppRequest, @Body() body: CreateOrderDto) {
+    const userId = getUserIdFromRequest(req);
 
     await pool.query('BEGIN');
 
@@ -65,11 +74,11 @@ export class CartController {
 
       const { rows } = await pool.query(
         `
-      INSERT INTO orders
-      (user_id, cart_id, payment, delivery, comments, status, total)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *
-      `,
+        INSERT INTO orders
+        (user_id, cart_id, payment, delivery, comments, status, total)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *
+        `,
         [
           userId,
           cartId,
@@ -83,10 +92,10 @@ export class CartController {
 
       await pool.query(
         `
-      UPDATE carts
-      SET status = $1, updated_at = NOW()
-      WHERE id = $2
-      `,
+        UPDATE carts
+        SET status = $1, updated_at = NOW()
+        WHERE id = $2
+        `,
         ['ORDERED', cartId],
       );
 
@@ -99,12 +108,17 @@ export class CartController {
     }
   }
 
+  @UseGuards(BasicAuthGuard)
   @Get('order')
-  async getOrders(): Promise<Order[]> {
-    const { rows } = await pool.query(`
-    SELECT * FROM orders ORDER BY created_at DESC
-  `);
+  async getOrders(@Req() req: AppRequest): Promise<any[]> {
+    const userId = getUserIdFromRequest(req);
+
+    const { rows } = await pool.query(
+      `SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC`,
+      [userId],
+    );
 
     return rows;
   }
 }
+``;

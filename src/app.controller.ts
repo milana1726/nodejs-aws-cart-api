@@ -1,64 +1,44 @@
 import {
   Controller,
   Get,
-  Request,
   Post,
-  //UseGuards,
-  HttpStatus,
+  Request,
   Body,
+  UseGuards,
+  HttpStatus,
   HttpCode,
+  Inject,
 } from '@nestjs/common';
-import {
-  //LocalAuthGuard,
-  AuthService,
-  // JwtAuthGuard,
-  //BasicAuthGuard,
-} from './auth';
-//import { User } from './users';
-//import { AppRequest } from './shared';
 
-// @Controller()
-// export class AppController {
-//   constructor(private authService: AuthService) {}
+import { AuthService } from './auth/auth.service';
+import { BasicAuthGuard } from './auth/guards/bacis-auth.guard';
 
-//   @Get(['', 'ping'])
-//   healthCheck() {
-//     return {
-//       statusCode: HttpStatus.OK,
-//       message: 'OK',
-//     };
-//   }
-
-//   @Post('api/auth/register')
-//   @HttpCode(HttpStatus.CREATED)
-//   // TODO ADD validation
-//   register(@Body() body: User) {
-//     return this.authService.register(body);
-//   }
-
-//   //@UseGuards(LocalAuthGuard)
-//   @HttpCode(200)
-//   @Post('api/auth/login')
-//   async login(@Request() req: AppRequest) {
-//     const token = this.authService.login(req.user!, 'basic');
-
-//     return token;
-//   }
-
-//   // @UseGuards(BasicAuthGuard)
-//   @Get('api/profile')
-//   async getProfile(@Request() req: AppRequest) {
-//     return {
-//       user: req.user,
-//     };
-//   }
+import { AppRequest } from './shared';
+import { User } from './users/models';
 
 @Controller()
 export class AppController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(@Inject(AuthService) private authService: AuthService) {}
+
+  @Get(['', 'ping'])
+  healthCheck() {
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'OK',
+    };
+  }
 
   @Post('api/auth/register')
-  register(@Body() body: any) {
+  @HttpCode(HttpStatus.CREATED)
+  register(@Body() body: User) {
     return this.authService.register(body);
+  }
+
+  @UseGuards(BasicAuthGuard)
+  @Get('api/profile')
+  getProfile(@Request() req: AppRequest) {
+    return {
+      user: req.user,
+    };
   }
 }
