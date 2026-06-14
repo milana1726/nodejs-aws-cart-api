@@ -2,6 +2,12 @@
 /dist
 /node_modules
 
+# Compiled TypeScript
+**/*.js
+**/*.d.ts
+!deploy/**/*.js
+!deploy/**/*.d.ts
+
 # Logs
 logs
 *.log

@@ -9,90 +9,166 @@ import {
   HttpStatus,
   HttpCode,
   BadRequestException,
+  Inject,
 } from '@nestjs/common';
+
 import { BasicAuthGuard } from '../auth';
-import { Order, OrderService } from '../order';
 import { AppRequest, getUserIdFromRequest } from '../shared';
+
 import { calculateCartTotal } from './models-rules';
 import { CartService } from './services';
 import { CartItem } from './models';
-import { CreateOrderDto, PutCartPayload } from 'src/order/type';
+
+import { CreateOrderDto, PutCartPayload } from '../order/type';
+import { pool } from '../shared/db/db';
 
 @Controller('api/profile/cart')
 export class CartController {
-  constructor(
-    private cartService: CartService,
-    private orderService: OrderService,
-  ) {}
+  constructor(@Inject(CartService) private cartService: CartService) {}
 
-  // @UseGuards(JwtAuthGuard)
   @UseGuards(BasicAuthGuard)
   @Get()
-  findUserCart(@Req() req: AppRequest): CartItem[] {
-    const cart = this.cartService.findOrCreateByUserId(
-      getUserIdFromRequest(req),
-    );
+  async findUserCart(@Req() req: AppRequest): Promise<CartItem[]> {
+    const userId = getUserIdFromRequest(req);
+    const cart = await this.cartService.findOrCreateByUserId(userId);
 
     return cart.items;
   }
 
-  // @UseGuards(JwtAuthGuard)
   @UseGuards(BasicAuthGuard)
   @Put()
-  updateUserCart(
+  async updateUserCart(
     @Req() req: AppRequest,
     @Body() body: PutCartPayload,
-  ): CartItem[] {
-    // TODO: validate body payload...
-    const cart = this.cartService.updateByUserId(
-      getUserIdFromRequest(req),
-      body,
-    );
+  ): Promise<CartItem[]> {
+    const userId = getUserIdFromRequest(req);
+    const cart = await this.cartService.updateByUserId(userId, body);
 
     return cart.items;
   }
 
-  // @UseGuards(JwtAuthGuard)
   @UseGuards(BasicAuthGuard)
   @Delete()
   @HttpCode(HttpStatus.OK)
-  clearUserCart(@Req() req: AppRequest) {
-    this.cartService.removeByUserId(getUserIdFromRequest(req));
+  async clearUserCart(@Req() req: AppRequest): Promise<void> {
+    const userId = getUserIdFromRequest(req);
+    await this.cartService.removeByUserId(userId);
   }
 
-  // @UseGuards(JwtAuthGuard)
   @UseGuards(BasicAuthGuard)
   @Put('order')
-  checkout(@Req() req: AppRequest, @Body() body: CreateOrderDto) {
+  async checkout(@Req() req: AppRequest, @Body() body: CreateOrderDto) {
     const userId = getUserIdFromRequest(req);
-    const cart = this.cartService.findByUserId(userId);
 
-    if (!(cart && cart.items.length)) {
-      throw new BadRequestException('Cart is empty');
+    await pool.query('BEGIN');
+
+    try {
+      const cart = await this.cartService.findByUserId(userId);
+
+      if (!(cart && cart.items.length)) {
+        throw new BadRequestException('Cart is empty');
+      }
+
+      const { id: cartId, items } = cart;
+      const total = calculateCartTotal(items);
+
+      const { rows } = await pool.query(
+        `
+        INSERT INTO orders
+        (user_id, cart_id, payment, delivery, comments, status, total)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *
+        `,
+        [
+          userId,
+          cartId,
+          JSON.stringify({ type: 'card' }),
+          JSON.stringify({ address: body.delivery.address }),
+          '',
+          'CREATED',
+          total,
+        ],
+      );
+
+      await pool.query(
+        `
+        UPDATE carts
+        SET status = $1, updated_at = NOW()
+        WHERE id = $2
+        `,
+        ['ORDERED', cartId],
+      );
+
+      await pool.query('COMMIT');
+
+      const order = rows[0];
+
+      return [
+        {
+          ...order,
+          items: items.map((item) => ({
+            productId: item.product.id,
+            count: item.count,
+          })),
+          statusHistory: [
+            {
+              status: 'ORDERED',
+              timestamp: order.created_at,
+              comment: body.delivery.address.comment,
+            },
+          ],
+        },
+      ];
+    } catch (e) {
+      await pool.query('ROLLBACK');
+      throw e;
     }
-
-    const { id: cartId, items } = cart;
-    const total = calculateCartTotal(items);
-    const order = this.orderService.create({
-      userId,
-      cartId,
-      items: items.map(({ product, count }) => ({
-        productId: product.id,
-        count,
-      })),
-      address: body.address,
-      total,
-    });
-    this.cartService.removeByUserId(userId);
-
-    return {
-      order,
-    };
   }
 
   @UseGuards(BasicAuthGuard)
   @Get('order')
-  getOrder(): Order[] {
-    return this.orderService.getAll();
+  async getOrders(@Req() req: AppRequest): Promise<any[]> {
+    const userId = getUserIdFromRequest(req);
+
+    const { rows } = await pool.query(
+      `SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC`,
+      [userId],
+    );
+
+    return Promise.all(
+      rows.map(async (order) => {
+        let items: { product_id: string; count: number }[] = [];
+
+        try {
+          const res = await pool.query(
+            `
+            SELECT product_id, count
+            FROM cart_items
+            WHERE cart_id = $1
+            `,
+            [order.cart_id],
+          );
+
+          items = res.rows;
+        } catch (e) {
+          console.error('Items fetch error:', e);
+        }
+
+        return {
+          ...order,
+          items: items.map((item) => ({
+            productId: item.product_id,
+            count: item.count,
+          })),
+          statusHistory: [
+            {
+              status: order.status,
+              timestamp: order.created_at,
+              comment: '',
+            },
+          ],
+        };
+      }),
+    );
   }
 }

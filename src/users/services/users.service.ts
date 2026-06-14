@@ -1,30 +1,23 @@
 import { Injectable } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
 import { User } from '../models';
+import { pool } from '../../shared/db/db';
 
 @Injectable()
 export class UsersService {
-  private readonly users: Record<string, User>;
+  async findOne(name: string): Promise<User | null> {
+    const { rows } = await pool.query('SELECT * FROM users WHERE name = $1', [
+      name,
+    ]);
 
-  constructor() {
-    this.users = {};
+    return rows[0] || null;
   }
 
-  findOne(name: string): User {
-    for (const id in this.users) {
-      if (this.users[id].name === name) {
-        return this.users[id];
-      }
-    }
-    return;
-  }
+  async createOne(user: User): Promise<User> {
+    const { rows } = await pool.query(
+      'INSERT INTO users (name, password) VALUES ($1, $2) RETURNING *',
+      [user.name, user.password],
+    );
 
-  createOne({ name, password }: User): User {
-    const id = randomUUID();
-    const newUser = { id, name, password };
-
-    this.users[id] = newUser;
-
-    return newUser;
+    return rows[0];
   }
 }
